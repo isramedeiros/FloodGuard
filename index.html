@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FloodGuard — Sistema de Alertas de Inundações</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon-wrap">
+      <img src="logo_blue.png" alt="FloodGuard" class="logo-img">
+      <span class="logo-pulse"></span>
+    </div>
+    <div class="logo-text">
+      <span class="logo-name">FloodGuard</span>
+      <span class="logo-version">v2.4.1</span>
+    </div>
+  </div>
+
+  <div class="sidebar-section-label">MONITORAMENTO</div>
+  <ul class="sidebar-nav">
+    <li class="nav-item active" data-page="overview">
+      <i class="fas fa-gauge-high"></i>
+      <span>Visão Geral</span>
+    </li>
+    <li class="nav-item" data-page="riskmap">
+      <i class="fas fa-map-location-dot"></i>
+      <span>Mapa de Risco</span>
+    </li>
+  </ul>
+
+  <div class="sidebar-section-label">ALERTAS</div>
+  <ul class="sidebar-nav">
+    <li class="nav-item" data-page="alerts">
+      <i class="fas fa-bell"></i>
+      <span>Central de Alertas</span>
+      <span class="nav-badge critical" id="navAlertBadge">12</span>
+    </li>
+    <li class="nav-item" data-page="reports">
+      <i class="fas fa-chart-line"></i>
+      <span>Relatórios e IA</span>
+    </li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <div class="api-status-card">
+      <div class="api-status-row">
+        <span class="status-dot online" id="mergeDot"></span>
+        <span class="api-label" id="mergeLabel">MERGE / INPE</span>
+        <span class="api-badge" id="mergeBadge">ATIVO</span>
+      </div>
+      <div class="api-status-row" style="margin-top:4px">
+        <span class="status-dot partial"></span>
+        <span class="api-label">INMET / CEMADEN</span>
+        <span class="api-badge mock">REF</span>
+      </div>
+    </div>
+    <li class="nav-item settings-item" data-page="settings">
+      <i class="fas fa-gear"></i>
+      <span>Configurações</span>
+    </li>
+  </div>
+</nav>
+
+<!-- ============ MAIN CONTENT ============ -->
+<div class="main-content">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo-mobile">
+        <img src="logo_blue.png" alt="FloodGuard" class="topbar-logo-img">
+        <span>FloodGuard</span>
+      </div>
+      <div>
+        <h1 class="page-title" id="pageTitle">Visão Geral</h1>
+        <span class="page-subtitle" id="pageSubtitle">Região Metropolitana de São Paulo</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-stat">
+        <i class="fas fa-cloud-showers-heavy" style="color:var(--cyan)"></i>
+        <span id="tbRain">—</span>
+        <small>mm/24h</small>
+      </div>
+      <div class="topbar-stat">
+        <i class="fas fa-temperature-half" style="color:var(--accent)"></i>
+        <span id="tbTemp">—</span>
+        <small>°C</small>
+      </div>
+      <div class="topbar-divider"></div>
+      <div class="topbar-time-block">
+        <div class="topbar-time" id="clockTime">00:00:00</div>
+        <div class="topbar-date" id="clockDate">—</div>
+      </div>
+      <div class="live-indicator">
+        <span class="pulse-ring"></span>
+        <span>AO VIVO</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ PAGE: VISÃO GERAL ============ -->
+  <div id="page-overview" class="page active">
+    <!-- STAT CARDS -->
+    <div class="stats-row" id="statsRow">
+      <div class="stat-card">
+        <div class="stat-icon rain"><i class="fas fa-cloud-rain"></i></div>
+        <div class="stat-body">
+          <div class="stat-value" id="statRain">—</div>
+          <div class="stat-unit">mm</div>
+          <div class="stat-label">Precipitação 24h</div>
+          <div class="stat-trend up" id="trendRain"><i class="fas fa-arrow-trend-up"></i> +18% vs ontem</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon river"><i class="fas fa-water"></i></div>
+        <div class="stat-body">
+          <div class="stat-value" id="statRiver">9.48</div>
+          <div class="stat-unit">m</div>
+          <div class="stat-label">Nível Rio Tietê</div>
+          <div class="stat-trend up critical-text"><i class="fas fa-triangle-exclamation"></i> Acima do limite</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon alerts"><i class="fas fa-bell"></i></div>
+        <div class="stat-body">
+          <div class="stat-value" id="statAlerts">128</div>
+          <div class="stat-unit"></div>
+          <div class="stat-label">Alertas Ativos</div>
+          <div class="stat-trend up critical-text"><i class="fas fa-arrow-trend-up"></i> +34 nas últimas 6h</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon municipalities"><i class="fas fa-map-pin"></i></div>
+        <div class="stat-body">
+          <div class="stat-value">423</div>
+          <div class="stat-unit"></div>
+          <div class="stat-label">Municípios Monitorados</div>
+          <div class="stat-trend neutral"><i class="fas fa-minus"></i> SP Metropolitana</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN GRID -->
+    <div class="overview-grid">
+      <!-- MAP PANEL -->
+      <div class="panel map-panel">
+        <div class="panel-header">
+          <div>
+            <span class="panel-title"><i class="fas fa-map"></i> Mapa de Monitoramento</span>
+            <span class="panel-subtitle">Pontos climáticos ativos</span>
+          </div>
+          <div class="panel-actions">
+            <button class="btn-icon" title="Centralizar"><i class="fas fa-crosshairs"></i></button>
+            <button class="btn-icon" title="Expandir" onclick="navigateTo('riskmap')"><i class="fas fa-expand"></i></button>
+          </div>
+        </div>
+        <div id="overviewMap" class="map-container"></div>
+        <div class="map-legend">
+          <span class="legend-item"><span class="legend-dot critical"></span>Crítico</span>
+          <span class="legend-item"><span class="legend-dot high"></span>Alto</span>
+          <span class="legend-item"><span class="legend-dot medium"></span>Médio</span>
+          <span class="legend-item"><span class="legend-dot low"></span>Baixo</span>
+        </div>
+      </div>
+
+      <!-- RIGHT PANELS -->
+      <div class="right-panels">
+        <!-- Severity Breakdown -->
+        <div class="panel severity-panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-chart-pie"></i> Distribuição de Risco</span>
+          </div>
+          <div class="severity-chart-wrap">
+            <canvas id="severityChart"></canvas>
+            <div class="severity-center">
+              <div class="severity-total" id="severityTotal">—</div>
+              <div class="severity-label">alertas</div>
+            </div>
+          </div>
+          <div class="severity-legend" id="severityLegend"></div>
+        </div>
+
+        <!-- Quick Alerts -->
+        <div class="panel quick-alerts-panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-bolt"></i> Alertas Recentes</span>
+            <a class="panel-link" onclick="navigateTo('alerts')">Ver todos <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="quick-alerts-list" id="quickAlertsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY CHART -->
+    <div class="panel history-panel">
+      <div class="panel-header">
+        <div>
+          <span class="panel-title"><i class="fas fa-chart-bar"></i> Série Histórica de Chuvas</span>
+          <span class="panel-subtitle">Precipitação diária acumulada — últimos 30 dias (mm)</span>
+        </div>
+        <div class="panel-actions">
+          <button class="tab-btn active" data-chart="rainfall">Chuvas</button>
+          <button class="tab-btn" data-chart="river">Nível do Rio</button>
+          <button class="tab-btn" data-chart="temp">Temperatura</button>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="historyChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE: MAPA DE RISCO ============ -->
+  <div id="page-riskmap" class="page">
+    <div class="riskmap-layout">
+      <div class="panel riskmap-panel">
+        <div class="panel-header">
+          <div>
+            <span class="panel-title"><i class="fas fa-map-location-dot"></i> Mapa de Risco — Grande São Paulo</span>
+            <span class="panel-subtitle">Zonas de risco baseadas em precipitação e hidrologia</span>
+          </div>
+          <div class="panel-actions">
+            <button class="tab-btn active" id="layerRisk" onclick="toggleRiskLayer('risk')">Zonas de Risco</button>
+            <button class="tab-btn" id="layerRain" onclick="toggleRiskLayer('rain')">Precipitação</button>
+          </div>
+        </div>
+        <div id="riskMap" class="map-container full"></div>
+        <div class="map-legend horizontal">
+          <strong>Nível de Risco:</strong>
+          <span class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>Crítico (&gt;50mm/24h)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#f97316"></span>Alto (30–50mm)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>Médio (15–30mm)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>Baixo (&lt;15mm)</span>
+        </div>
+      </div>
+
+      <div class="riskmap-sidebar">
+        <!-- Risk Summary -->
+        <div class="panel risk-summary">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-triangle-exclamation"></i> Resumo de Risco</span>
+          </div>
+          <div class="risk-level-bars" id="riskLevelBars"></div>
+        </div>
+
+        <!-- Active Points -->
+        <div class="panel risk-points">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-location-dot"></i> Pontos de Monitoramento</span>
+          </div>
+          <div class="risk-points-list" id="riskPointsList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE: CENTRAL DE ALERTAS ============ -->
+  <div id="page-alerts" class="page">
+    <div class="alerts-layout">
+      <div class="alerts-main">
+        <!-- Filters -->
+        <div class="alerts-filters">
+          <button class="filter-btn active" data-filter="all">Todos <span class="filter-count" id="fc-all">—</span></button>
+          <button class="filter-btn" data-filter="critical">Crítico <span class="filter-count critical" id="fc-critical">—</span></button>
+          <button class="filter-btn" data-filter="high">Alto <span class="filter-count high" id="fc-high">—</span></button>
+          <button class="filter-btn" data-filter="medium">Médio <span class="filter-count medium" id="fc-medium">—</span></button>
+          <button class="filter-btn" data-filter="low">Baixo <span class="filter-count low" id="fc-low">—</span></button>
+          <div class="filter-spacer"></div>
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Buscar alertas..." id="alertSearch" oninput="filterAlerts()"/>
+          </div>
+        </div>
+
+        <!-- Alert List -->
+        <div class="alerts-list" id="alertsList"></div>
+      </div>
+
+      <!-- Right Panel -->
+      <div class="alerts-sidebar">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-chart-pie"></i> Distribuição de Severidade</span>
+          </div>
+          <div class="severity-chart-wrap">
+            <canvas id="alertsSeverityChart"></canvas>
+            <div class="severity-center">
+              <div class="severity-total" id="alertsSeverityTotal">—</div>
+              <div class="severity-label">total</div>
+            </div>
+          </div>
+          <div class="severity-legend" id="alertsSeverityLegend"></div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-clock-rotate-left"></i> Linha do Tempo</span>
+          </div>
+          <div class="timeline-chart-wrap">
+            <canvas id="timelineChart" height="120"></canvas>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-info-circle"></i> Critérios de Alerta</span>
+          </div>
+          <div class="criteria-list">
+            <div class="criteria-item">
+              <span class="badge-severity critical">Crítico</span>
+              <span>&gt;50mm/24h ou &gt;30mm/1h</span>
+            </div>
+            <div class="criteria-item">
+              <span class="badge-severity high">Alto</span>
+              <span>30–50mm/24h ou 15–30mm/1h</span>
+            </div>
+            <div class="criteria-item">
+              <span class="badge-severity medium">Médio</span>
+              <span>15–30mm/24h ou 5–15mm/1h</span>
+            </div>
+            <div class="criteria-item">
+              <span class="badge-severity low">Baixo</span>
+              <span>5–15mm/24h ou 0.5–5mm/1h</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE: RELATÓRIOS E IA ============ -->
+  <div id="page-reports" class="page">
+    <div class="reports-grid">
+      <!-- Left column -->
+      <div class="reports-left">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-chart-bar"></i> Precipitação Mensal</span>
+            <span class="panel-subtitle" id="reportMonth">Jun 2026</span>
+          </div>
+          <div class="chart-container short">
+            <canvas id="monthlyRainChart"></canvas>
+          </div>
+        </div>
+
+        <div class="reports-mini-stats" id="reportsMiniStats"></div>
+      </div>
+
+      <!-- Center column -->
+      <div class="reports-center">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <span class="panel-title"><i class="fas fa-wave-square"></i> Tendência — Precipitação &amp; Temperatura</span>
+              <span class="panel-subtitle">Médias diárias — últimos 30 dias</span>
+            </div>
+            <button class="tab-btn active">30 dias</button>
+          </div>
+          <div class="chart-container">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-robot"></i> Análise de IA — Previsão de Risco</span>
+            <span class="badge-pill cyan">IA ATIVA</span>
+          </div>
+          <div class="ai-analysis" id="aiAnalysis"></div>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div class="reports-right">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-droplet"></i> Intensidade de Chuva</span>
+          </div>
+          <div class="chart-container short">
+            <canvas id="intensityChart"></canvas>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-list-check"></i> Estatísticas do Período</span>
+          </div>
+          <div class="period-stats" id="periodStats"></div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fas fa-satellite"></i> Fontes de Dados</span>
+          </div>
+          <div class="sources-list">
+            <div class="source-item">
+              <i class="fas fa-satellite" style="color:var(--accent)"></i>
+              <div>
+                <div class="source-name">MERGE / INPE</div>
+                <div class="source-desc">BDC STAC — precipitação horária (satélite + pluviômetros)</div>
+              </div>
+              <span class="source-status online" id="mergeSourceStatus">Online</span>
+            </div>
+            <div class="source-item">
+              <i class="fas fa-building-columns" style="color:var(--cyan)"></i>
+              <div>
+                <div class="source-name">INMET</div>
+                <div class="source-desc">Instituto Nacional de Meteorologia</div>
+              </div>
+              <span class="source-status ref">Ref.</span>
+            </div>
+            <div class="source-item">
+              <i class="fas fa-exclamation-triangle" style="color:var(--medium)"></i>
+              <div>
+                <div class="source-name">CEMADEN</div>
+                <div class="source-desc">Centro de Alertas de Desastres</div>
+              </div>
+              <span class="source-status ref">Ref.</span>
+            </div>
+            <div class="source-item">
+              <i class="fas fa-water" style="color:var(--low)"></i>
+              <div>
+                <div class="source-name">ANA</div>
+                <div class="source-desc">Agência Nacional de Águas</div>
+              </div>
+              <span class="source-status ref">Ref.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE: CONFIGURAÇÕES ============ -->
+  <div id="page-settings" class="page">
+    <div class="settings-wrap">
+      <div class="panel" style="max-width:600px">
+        <div class="panel-header">
+          <span class="panel-title"><i class="fas fa-gear"></i> Configurações do Sistema</span>
+        </div>
+        <div class="settings-group">
+          <div class="setting-item">
+            <div>
+              <div class="setting-label">Intervalo de Atualização</div>
+              <div class="setting-desc">Com que frequência os dados são atualizados</div>
+            </div>
+            <select class="setting-select">
+              <option>30 segundos</option>
+              <option selected>1 minuto</option>
+              <option>5 minutos</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <div>
+              <div class="setting-label">Limiar Crítico (mm/24h)</div>
+              <div class="setting-desc">Precipitação que dispara alerta crítico</div>
+            </div>
+            <input type="number" class="setting-input" value="50"/>
+          </div>
+          <div class="setting-item">
+            <div>
+              <div class="setting-label">Limiar Alto (mm/24h)</div>
+              <div class="setting-desc">Precipitação que dispara alerta alto</div>
+            </div>
+            <input type="number" class="setting-input" value="30"/>
+          </div>
+          <div class="setting-item">
+            <div>
+              <div class="setting-label">Notificações no Navegador</div>
+              <div class="setting-desc">Receba alertas críticos como notificações</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked/><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+        <button class="btn-primary" style="margin-top:16px"><i class="fas fa-save"></i> Salvar Configurações</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main-content -->
+
+<!-- TOAST NOTIFICATION -->
+<div class="toast" id="toast">
+  <i class="fas fa-triangle-exclamation"></i>
+  <span id="toastMsg">Novo alerta crítico detectado</span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
